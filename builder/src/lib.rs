@@ -1,4 +1,5 @@
 use proc_macro::TokenStream;
+use proc_macro2::TokenStream as TokenStream2;
 use quote::{format_ident, quote};
 use syn::{parse_macro_input, Data, DeriveInput, Error, Field, Fields, Ident, Type};
 
@@ -108,7 +109,7 @@ struct BuilderField<'a> {
 
 impl<'a> BuilderField<'a> {
     /// the definition of this field in the builder struct
-    fn field_definition(&self) -> proc_macro2::TokenStream {
+    fn field_definition(&self) -> TokenStream2 {
         let ident = self.ident;
         let ty = self.ty;
         if self.config.each.is_none() {
@@ -119,7 +120,7 @@ impl<'a> BuilderField<'a> {
     }
 
     /// initial value for the field when creating a builder struct
-    fn field_init(&self) -> proc_macro2::TokenStream {
+    fn field_init(&self) -> TokenStream2 {
         let ident = self.ident;
         if self.config.each.is_none() {
             quote! { #ident: None }
@@ -129,7 +130,7 @@ impl<'a> BuilderField<'a> {
     }
 
     /// the method on the builder to handle this field
-    fn field_method(&self) -> proc_macro2::TokenStream {
+    fn field_method(&self) -> TokenStream2 {
         let ident = self.ident;
         let ty = self.ty;
         if let Some(ref each) = self.config.each {
@@ -162,7 +163,7 @@ impl<'a> BuilderField<'a> {
     }
 
     /// method to construct the final value on the built type
-    fn construct_field(&self) -> proc_macro2::TokenStream {
+    fn construct_field(&self) -> TokenStream2 {
         let ident = self.ident;
         if self.config.each.is_some() {
             quote! { #ident: self.#ident.drain(..).collect() }

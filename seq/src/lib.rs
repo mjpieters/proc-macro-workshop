@@ -1,25 +1,27 @@
 use proc_macro::TokenStream;
+use proc_macro2::TokenStream as TokenStream2;
+use proc_macro2::{Delimiter, Group, Span, TokenTree};
 use quote::{format_ident, quote, ToTokens};
 use syn::parse::Parse;
 use syn::{braced, parse_macro_input, Ident, LitInt, Token};
 
 #[derive(Debug)]
 enum SeqPart {
-    TokenStream(Vec<proc_macro2::TokenTree>),
-    Group(proc_macro2::Delimiter, proc_macro2::Span, Vec<SeqPart>),
-    Placeholder(proc_macro2::Span, Option<Ident>),
+    TokenStream(Vec<TokenTree>),
+    Group(Delimiter, Span, Vec<SeqPart>),
+    Placeholder(Span, Option<Ident>),
     Repeated(Vec<SeqPart>),
 }
 
 impl SeqPart {
-    fn from_stream<TT: Iterator<Item = proc_macro2::TokenTree>>(
+    fn from_stream<TT: Iterator<Item = TokenTree>>(
         placeholder: &Ident,
         mut it: TT,
     ) -> Vec<Self> {
         let mut seq = Vec::new();
         let mut stream = Vec::new();
         while let Some(tree) = it.next() {
-            use proc_macro2::TokenTree::*;
+            use TokenTree::*;
             match tree {
                 Ident(ref ident) if ident == placeholder => {
                     let mut prefix = None;
@@ -73,21 +75,21 @@ impl SeqPart {
         seq
     }
 
-    fn repeated<R: Iterator<Item = usize> + Clone>(&self, range: &R) -> proc_macro2::TokenStream {
+    fn repeated<R: Iterator<Item = usize> + Clone>(&self, range: &R) -> TokenStream2 {
         match self {
             Self::Placeholder(..) => {
                 quote! { compile_error!("Placeholder outside of repeated section") }
             }
             Self::Group(delimiter, span, group) => {
-                let mut grouped = proc_macro2::Group::new(
+                let mut grouped = Group::new(
                     delimiter.clone(),
                     group.iter().map(|token| token.repeated(range)).collect(),
                 );
                 grouped.set_span(span.clone());
-                proc_macro2::TokenTree::from(grouped).into()
+                TokenTree::from(grouped).into()
             }
             Self::Repeated(group) => {
-                let mut stream = proc_macro2::TokenStream::new();
+                let mut stream = TokenStream2::new();
                 for n in range.clone() {
                     stream.extend(group.iter().map(|token| token.substitute(n)))
                 }
@@ -105,7 +107,7 @@ impl SeqPart {
         }
     }
 
-    fn substitute(&self, n: usize) -> proc_macro2::TokenStream {
+    fn substitute(&self, n: usize) -> TokenStream2 {
         match self {
             Self::Placeholder(span, prefix) => match prefix {
                 None => LitInt::new(&n.to_string(), span.clone()).into_token_stream(),
@@ -114,12 +116,12 @@ impl SeqPart {
                 }
             },
             Self::Group(delimiter, span, group) => {
-                let mut grouped = proc_macro2::Group::new(
+                let mut grouped = Group::new(
                     delimiter.clone(),
                     group.iter().map(|token| token.substitute(n)).collect(),
                 );
                 grouped.set_span(span.clone());
-                proc_macro2::TokenTree::from(grouped).into()
+                TokenTree::from(grouped).into()
             }
             Self::Repeated(..) => {
                 quote! { compile_error!("Repeat inside repeat is not supported") }
@@ -154,7 +156,7 @@ impl Parse for Seq {
         braced!(content in input);
         let mut tokens = SeqPart::from_stream(
             &ident,
-            content.parse::<proc_macro2::TokenStream>()?.into_iter(),
+            content.parse::<TokenStream2>()?.into_iter(),
         );
         if !tokens.iter().any(|part| part.has_repetition()) {
             // wrap the token tree in a repeater
@@ -165,7 +167,7 @@ impl Parse for Seq {
 }
 
 impl ToTokens for Seq {
-    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+    fn to_tokens(&self, tokens: &mut TokenStream2) {
         if !self.tokens.is_empty() {
             tokens.extend(self.tokens.iter().map(|tok| tok.repeated(&self.range)));
         }

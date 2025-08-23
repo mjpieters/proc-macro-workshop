@@ -1,4 +1,5 @@
 use proc_macro::TokenStream;
+use proc_macro2::TokenStream as TokenStream2;
 use quote::{quote, ToTokens};
 use syn::{parse_macro_input, parse_quote, visit::Visit, Data, DeriveInput, Error, Fields};
 
@@ -100,7 +101,7 @@ struct DebugField<'a> {
 }
 
 impl<'a> ToTokens for DebugField<'_> {
-    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+    fn to_tokens(&self, tokens: &mut TokenStream2) {
         let ident = self.name;
         // output the format components as literal strings
         tokens.extend(match self.format {
