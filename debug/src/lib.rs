@@ -100,7 +100,7 @@ struct DebugField<'a> {
     generics: Vec<DebugFieldGenerics<'a>>,
 }
 
-impl<'a> ToTokens for DebugField<'_> {
+impl ToTokens for DebugField<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream2) {
         let ident = self.name;
         // output the format components as literal strings
@@ -172,10 +172,9 @@ pub fn derive(input: TokenStream) -> TokenStream {
         match input
             .attrs
             .iter()
-            .fold(Ok(None), |bound, attr| match bound {
-                Err(_) => bound,
-                Ok(Some(_)) => Err(Error::new_spanned(&attr.meta, "no other options accepted")),
-                Ok(None) => {
+            .try_fold(None, |bound, attr| match bound {
+                Some(_) => Err(Error::new_spanned(&attr.meta, "no other options accepted")),
+                None => {
                     if !attr.path().is_ident("debug") {
                         Ok(None)
                     } else {

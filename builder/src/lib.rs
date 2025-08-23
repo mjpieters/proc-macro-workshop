@@ -107,7 +107,7 @@ struct BuilderField<'a> {
     config: BuilderFieldConfig,
 }
 
-impl<'a> BuilderField<'a> {
+impl BuilderField<'_>{
     /// the definition of this field in the builder struct
     fn field_definition(&self) -> TokenStream2 {
         let ident = self.ident;

@@ -14,13 +14,10 @@ enum SeqPart {
 }
 
 impl SeqPart {
-    fn from_stream<TT: Iterator<Item = TokenTree>>(
-        placeholder: &Ident,
-        mut it: TT,
-    ) -> Vec<Self> {
+    fn from_stream(placeholder: &Ident, tt: TokenStream2) -> Vec<Self> {
         let mut seq = Vec::new();
         let mut stream = Vec::new();
-        while let Some(tree) = it.next() {
+        for tree in tt {
             use TokenTree::*;
             match tree {
                 Ident(ref ident) if ident == placeholder => {
@@ -36,18 +33,18 @@ impl SeqPart {
                         }
                     }
                     if !stream.is_empty() {
-                        seq.push(Self::TokenStream(stream.drain(..).collect()));
+                        seq.push(Self::TokenStream(std::mem::take(&mut stream)));
                     }
                     seq.push(Self::Placeholder(span, prefix))
                 }
                 Group(group) => {
                     if !stream.is_empty() {
-                        seq.push(Self::TokenStream(stream.drain(..).collect()));
+                        seq.push(Self::TokenStream(std::mem::take(&mut stream)));
                     }
                     seq.push(Self::Group(
                         group.delimiter(),
                         group.span(),
-                        Self::from_stream(placeholder, group.stream().into_iter()),
+                        Self::from_stream(placeholder, group.stream()),
                     ))
                 }
                 Punct(ref punct)
@@ -70,7 +67,7 @@ impl SeqPart {
             }
         }
         if !stream.is_empty() {
-            seq.push(Self::TokenStream(stream.drain(..).collect()));
+            seq.push(Self::TokenStream(std::mem::take(&mut stream)));
         }
         seq
     }
@@ -82,10 +79,10 @@ impl SeqPart {
             }
             Self::Group(delimiter, span, group) => {
                 let mut grouped = Group::new(
-                    delimiter.clone(),
+                    *delimiter,
                     group.iter().map(|token| token.repeated(range)).collect(),
                 );
-                grouped.set_span(span.clone());
+                grouped.set_span(*span);
                 TokenTree::from(grouped).into()
             }
             Self::Repeated(group) => {
@@ -110,17 +107,15 @@ impl SeqPart {
     fn substitute(&self, n: usize) -> TokenStream2 {
         match self {
             Self::Placeholder(span, prefix) => match prefix {
-                None => LitInt::new(&n.to_string(), span.clone()).into_token_stream(),
-                Some(prefix) => {
-                    format_ident!("{}{}", prefix, n, span = span.clone()).to_token_stream()
-                }
+                None => LitInt::new(&n.to_string(), *span).into_token_stream(),
+                Some(prefix) => format_ident!("{}{}", prefix, n, span = *span).to_token_stream(),
             },
             Self::Group(delimiter, span, group) => {
                 let mut grouped = Group::new(
-                    delimiter.clone(),
+                    *delimiter,
                     group.iter().map(|token| token.substitute(n)).collect(),
                 );
-                grouped.set_span(span.clone());
+                grouped.set_span(*span);
                 TokenTree::from(grouped).into()
             }
             Self::Repeated(..) => {
@@ -154,10 +149,7 @@ impl Parse for Seq {
             }
         };
         braced!(content in input);
-        let mut tokens = SeqPart::from_stream(
-            &ident,
-            content.parse::<TokenStream2>()?.into_iter(),
-        );
+        let mut tokens = SeqPart::from_stream(&ident, content.parse()?);
         if !tokens.iter().any(|part| part.has_repetition()) {
             // wrap the token tree in a repeater
             tokens = vec![SeqPart::Repeated(tokens)];
