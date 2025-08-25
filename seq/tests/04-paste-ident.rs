@@ -24,7 +24,8 @@ use seq::seq;
 
 seq!(N in 1..4 {
     fn f~N () -> u64 {
-        N * 2
+        let value~N~_doubled = N * 2;
+        value~N~_doubled
     }
 });
 

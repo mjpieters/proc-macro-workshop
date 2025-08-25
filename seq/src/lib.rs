@@ -9,7 +9,7 @@ use syn::{braced, parse_macro_input, Ident, LitInt, Token};
 enum SeqPart {
     TokenStream(Vec<TokenTree>),
     Group(Delimiter, Span, Vec<SeqPart>),
-    Placeholder(Span, Option<Ident>),
+    Placeholder(Span, Option<Ident>, Option<Ident>),
     Repeated(Vec<SeqPart>),
 }
 
@@ -35,7 +35,14 @@ impl SeqPart {
                     if !stream.is_empty() {
                         seq.push(Self::TokenStream(std::mem::take(&mut stream)));
                     }
-                    seq.push(Self::Placeholder(span, prefix))
+                    seq.push(Self::Placeholder(span, prefix, None))
+                }
+                Ident(ref suffix) if matches!((seq.last(), stream.last()), (Some(Self::Placeholder(_, _, None)), Some(Punct(ref punct))) if punct.as_char() == '~') =>
+                {
+                    stream.pop().unwrap();
+                    if let Some(Self::Placeholder(span, prefix, None)) = seq.pop() {
+                        seq.push(Self::Placeholder(span, prefix, Some(suffix.clone())));
+                    }
                 }
                 Group(group) => {
                     if !stream.is_empty() {
@@ -106,9 +113,17 @@ impl SeqPart {
 
     fn substitute(&self, n: usize) -> TokenStream2 {
         match self {
-            Self::Placeholder(span, prefix) => match prefix {
-                None => LitInt::new(&n.to_string(), *span).into_token_stream(),
-                Some(prefix) => format_ident!("{}{}", prefix, n, span = *span).to_token_stream(),
+            Self::Placeholder(span, prefix, suffix) => match (prefix, suffix) {
+                (None, None) => LitInt::new(&n.to_string(), *span).into_token_stream(),
+                (None, Some(suffix)) => {
+                    LitInt::new(&format!("{}{}", n, suffix), *span).to_token_stream()
+                }
+                (Some(prefix), None) => {
+                    format_ident!("{}{}", prefix, n, span = *span).to_token_stream()
+                }
+                (Some(prefix), Some(suffix)) => {
+                    format_ident!("{}{}{}", prefix, n, suffix, span = *span).to_token_stream()
+                }
             },
             Self::Group(delimiter, span, group) => {
                 let mut grouped = Group::new(
